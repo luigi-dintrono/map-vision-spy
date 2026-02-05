@@ -1,0 +1,9 @@
+# Optional dependencies for better polygon detection
+# Install with: pip install -r requirements-optional.txt
+scipy==1.13.0
+scikit-image==0.23.0
+
+# Optional: shapely for polygon simplification
+# Note: shapely requires GEOS library. On macOS, install with: brew install geos
+# Then uncomment the line below and install: pip install shapely==2.0.4
+# shapely==2.0.4

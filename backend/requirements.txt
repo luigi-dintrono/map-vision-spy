@@ -1,0 +1,11 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+pillow==10.4.0
+numpy==1.26.4
+geojson==3.1.0
+pydantic==2.8.0
+# Optional: shapely for polygon simplification (requires GEOS: brew install geos)
+# shapely==2.0.4
+# Optional: scipy and scikit-image for better polygon detection
+# Install separately: pip install scipy scikit-image

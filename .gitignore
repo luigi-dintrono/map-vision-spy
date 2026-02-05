@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables
+.env
+.env.local
+.env*.local
+frontend/.env.local
+backend/.env
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/.vercel
+
+# Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model files (large)
+backend/models/*.pt
+backend/models/*.pth
+backend/models/*.ckpt
+
+# Logs
+*.log
+logs/

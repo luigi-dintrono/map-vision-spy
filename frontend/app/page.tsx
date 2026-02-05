@@ -40,6 +40,97 @@ export default function Home() {
   // Captured images history
   const [capturedImages, setCapturedImages] = useState<CapturedImage[]>([]);
 
+  // Helper function to composite image with detection results
+  const compositeImageWithResults = async (
+    baseImage: string,
+    bounds: ReturnType<typeof getMapBounds>,
+    results: GeoJSONResponse,
+    capturePrompts: Prompt[]
+  ): Promise<string> => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    await new Promise<void>((resolve) => {
+      img.onload = () => resolve();
+      img.src = baseImage;
+    });
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      console.error('Failed to get canvas context');
+      return baseImage;
+    }
+    
+    // Draw the base image
+    ctx.drawImage(img, 0, 0);
+    
+    // Helper to convert geo coords to pixel coords
+    const geoToPixel = (lng: number, lat: number) => {
+      const x = ((lng - bounds.west) / (bounds.east - bounds.west)) * canvas.width;
+      const y = ((bounds.north - lat) / (bounds.north - bounds.south)) * canvas.height;
+      return { x, y };
+    };
+    
+    // Draw each feature
+    for (const feature of results.features) {
+      const color = feature.properties?.color || '#FF0000';
+      const geometry = feature.geometry;
+      
+      ctx.fillStyle = color + '66'; // Add transparency
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      
+      if (geometry.type === 'Polygon') {
+        ctx.beginPath();
+        const coords = geometry.coordinates[0] as [number, number][];
+        coords.forEach((coord, i) => {
+          const { x, y } = geoToPixel(coord[0], coord[1]);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (geometry.type === 'MultiPolygon') {
+        for (const polygon of geometry.coordinates as [number, number][][]) {
+          ctx.beginPath();
+          const coords = polygon[0] as unknown as [number, number][];
+          coords.forEach((coord, i) => {
+            const { x, y } = geoToPixel(coord[0], coord[1]);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+    }
+    
+    // Add legend
+    const legendY = 20;
+    const legendX = 10;
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(legendX - 5, legendY - 15, 150, 25 * capturePrompts.length + 10);
+    
+    capturePrompts.forEach((prompt, i) => {
+      const y = legendY + i * 25;
+      ctx.fillStyle = prompt.color;
+      ctx.fillRect(legendX, y, 20, 15);
+      ctx.strokeStyle = '#000';
+      ctx.strokeRect(legendX, y, 20, 15);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(prompt.text, legendX + 28, y + 12);
+    });
+    
+    return canvas.toDataURL('image/png');
+  };
+
   useEffect(() => {
     // Check backend health on mount (non-blocking - just for info)
     checkHealth()
@@ -138,10 +229,15 @@ export default function Home() {
 
       setDetectionResults(results);
       
-      // Add to captured images history WITH results
+      // Create composited image with detection results overlaid
+      const compositedImage = results && results.features.length > 0
+        ? await compositeImageWithResults(previewImage, previewBounds, results, prompts)
+        : previewImage;
+      
+      // Add to captured images history WITH results and composited image
       const newCapture: CapturedImage = {
         id: Date.now().toString(),
-        image: previewImage,
+        image: compositedImage, // Store the image with boxes already drawn
         timestamp: new Date(),
         bounds: previewBounds,
         prompts: [...prompts], // Store full prompts with colors
@@ -160,11 +256,22 @@ export default function Home() {
   const handleSaveImage = async () => {
     if (!previewImage) return;
     
-    // Find the capture with results for this preview image
+    // Find if this is a capture from history (already has results composited)
     const capture = capturedImages.find(c => c.image === previewImage);
-    const resultsToRender = capture?.results || detectionResults;
     
-    if (!resultsToRender || !previewBounds) {
+    if (capture) {
+      // This is a historical capture - image already has results composited
+      const link = document.createElement('a');
+      link.download = `map-detection-${Date.now()}.png`;
+      link.href = capture.image;
+      link.click();
+      return;
+    }
+    
+    // This is a new capture preview - need to composite if we have results
+    const resultsToRender = detectionResults;
+    
+    if (!resultsToRender || !previewBounds || resultsToRender.features.length === 0) {
       // No results, just save the plain image
       const link = document.createElement('a');
       link.download = `map-capture-${Date.now()}.png`;
@@ -173,93 +280,17 @@ export default function Home() {
       return;
     }
     
-    // Create a canvas to composite image + results
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
+    // Composite and save
+    const compositedImage = await compositeImageWithResults(
+      previewImage,
+      previewBounds,
+      resultsToRender,
+      prompts
+    );
     
-    await new Promise<void>((resolve) => {
-      img.onload = () => resolve();
-      img.src = previewImage;
-    });
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext('2d');
-    
-    if (!ctx) {
-      console.error('Failed to get canvas context');
-      return;
-    }
-    
-    // Draw the base image
-    ctx.drawImage(img, 0, 0);
-    
-    // Helper to convert geo coords to pixel coords
-    const geoToPixel = (lng: number, lat: number) => {
-      const x = ((lng - previewBounds.west) / (previewBounds.east - previewBounds.west)) * canvas.width;
-      const y = ((previewBounds.north - lat) / (previewBounds.north - previewBounds.south)) * canvas.height;
-      return { x, y };
-    };
-    
-    // Draw each feature
-    for (const feature of resultsToRender.features) {
-      const color = feature.properties?.color || '#FF0000';
-      const geometry = feature.geometry;
-      
-      ctx.fillStyle = color + '66'; // Add transparency
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      
-      if (geometry.type === 'Polygon') {
-        ctx.beginPath();
-        const coords = geometry.coordinates[0] as [number, number][]; // Outer ring
-        coords.forEach((coord, i) => {
-          const { x, y } = geoToPixel(coord[0], coord[1]);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      } else if (geometry.type === 'MultiPolygon') {
-        for (const polygon of geometry.coordinates as [number, number][][]) {
-          ctx.beginPath();
-          const coords = polygon[0] as unknown as [number, number][]; // Outer ring
-          coords.forEach((coord, i) => {
-            const { x, y } = geoToPixel(coord[0], coord[1]);
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-          });
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        }
-      }
-    }
-    
-    // Add legend - use prompts from the capture if available, otherwise current prompts
-    const legendPrompts = capture?.prompts || prompts;
-    const legendY = 20;
-    const legendX = 10;
-    ctx.font = '14px sans-serif';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(legendX - 5, legendY - 15, 150, 25 * legendPrompts.length + 10);
-    
-    legendPrompts.forEach((prompt, i) => {
-      const y = legendY + i * 25;
-      ctx.fillStyle = prompt.color;
-      ctx.fillRect(legendX, y, 20, 15);
-      ctx.strokeStyle = '#000';
-      ctx.strokeRect(legendX, y, 20, 15);
-      ctx.fillStyle = '#fff';
-      ctx.fillText(prompt.text, legendX + 28, y + 12);
-    });
-    
-    // Save the composited image
     const link = document.createElement('a');
     link.download = `map-detection-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
+    link.href = compositedImage;
     link.click();
   };
   

@@ -14,7 +14,7 @@ interface CapturedImage {
   image: string;
   timestamp: Date;
   bounds: ReturnType<typeof getMapBounds>;
-  prompts: string[];
+  prompts: Prompt[]; // Full prompts with colors
   detectionCount: number;
   results: GeoJSONResponse | null;
 }
@@ -144,7 +144,7 @@ export default function Home() {
         image: previewImage,
         timestamp: new Date(),
         bounds: previewBounds,
-        prompts: prompts.map(p => p.text),
+        prompts: [...prompts], // Store full prompts with colors
         detectionCount: results?.features.length || 0,
         results: results,
       };
@@ -238,14 +238,15 @@ export default function Home() {
       }
     }
     
-    // Add legend
+    // Add legend - use prompts from the capture if available, otherwise current prompts
+    const legendPrompts = capture?.prompts || prompts;
     const legendY = 20;
     const legendX = 10;
     ctx.font = '14px sans-serif';
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(legendX - 5, legendY - 15, 150, 25 * prompts.length + 10);
+    ctx.fillRect(legendX - 5, legendY - 15, 150, 25 * legendPrompts.length + 10);
     
-    prompts.forEach((prompt, i) => {
+    legendPrompts.forEach((prompt, i) => {
       const y = legendY + i * 25;
       ctx.fillStyle = prompt.color;
       ctx.fillRect(legendX, y, 20, 15);
@@ -432,7 +433,7 @@ export default function Home() {
                       {capture.detectionCount} detection{capture.detectionCount !== 1 ? 's' : ''}
                     </div>
                     <div style={{ color: '#888', fontSize: '10px' }}>
-                      {capture.prompts.join(', ')}
+                      {capture.prompts.map(p => p.text).join(', ')}
                     </div>
                   </div>
                 </div>

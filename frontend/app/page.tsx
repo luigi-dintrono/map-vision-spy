@@ -14,7 +14,9 @@ interface CapturedImage {
   image: string;
   timestamp: Date;
   bounds: ReturnType<typeof getMapBounds>;
-  detectionCount?: number;
+  prompts: string[];
+  detectionCount: number;
+  results: GeoJSONResponse | null;
 }
 
 export default function Home() {
@@ -118,17 +120,41 @@ export default function Home() {
     if (!previewImage || !previewBounds) return;
     
     setShowPreview(false);
-    await handleImageCapture(previewImage, previewBounds);
-    
-    // Add to captured images history
-    const newCapture: CapturedImage = {
-      id: Date.now().toString(),
-      image: previewImage,
-      timestamp: new Date(),
-      bounds: previewBounds,
-      detectionCount: detectionResults?.features.length || 0,
-    };
-    setCapturedImages(prev => [newCapture, ...prev].slice(0, 10)); // Keep last 10
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const apiPrompts = prompts
+        .filter((p) => p.text.trim())
+        .map((p) => ({ text: p.text, color: p.color }));
+
+      const results = await detectObjects(
+        previewImage,
+        apiPrompts,
+        previewBounds,
+        zoom,
+        confidence
+      );
+
+      setDetectionResults(results);
+      
+      // Add to captured images history WITH results
+      const newCapture: CapturedImage = {
+        id: Date.now().toString(),
+        image: previewImage,
+        timestamp: new Date(),
+        bounds: previewBounds,
+        prompts: prompts.map(p => p.text),
+        detectionCount: results?.features.length || 0,
+        results: results,
+      };
+      setCapturedImages(prev => [newCapture, ...prev].slice(0, 10)); // Keep last 10
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || 'Detection failed');
+      console.error('Detection error:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   const handleSaveImage = () => {
@@ -268,7 +294,7 @@ export default function Home() {
         {capturedImages.length > 0 && (
           <div style={{ marginTop: '20px' }}>
             <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>
-              Recent Captures
+              Recent Captures ({capturedImages.length})
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {capturedImages.map((capture) => (
@@ -282,8 +308,13 @@ export default function Home() {
                     background: '#f5f5f5',
                     borderRadius: '4px',
                     cursor: 'pointer',
+                    border: detectionResults === capture.results ? '2px solid #4CAF50' : '2px solid transparent',
                   }}
                   onClick={() => {
+                    // Load this capture's results onto the map
+                    if (capture.results) {
+                      setDetectionResults(capture.results);
+                    }
                     setPreviewImage(capture.image);
                     setPreviewBounds(capture.bounds);
                     setShowPreview(true);
@@ -293,16 +324,19 @@ export default function Home() {
                     src={capture.image}
                     alt="Captured"
                     style={{
-                      width: '50px',
-                      height: '50px',
+                      width: '60px',
+                      height: '45px',
                       objectFit: 'cover',
                       borderRadius: '4px',
                     }}
                   />
-                  <div style={{ flex: 1, fontSize: '12px' }}>
-                    <div>{capture.timestamp.toLocaleTimeString()}</div>
-                    <div style={{ color: '#666' }}>
-                      {capture.detectionCount || 0} detections
+                  <div style={{ flex: 1, fontSize: '11px' }}>
+                    <div style={{ fontWeight: 'bold' }}>{capture.timestamp.toLocaleTimeString()}</div>
+                    <div style={{ color: '#4CAF50' }}>
+                      {capture.detectionCount} detection{capture.detectionCount !== 1 ? 's' : ''}
+                    </div>
+                    <div style={{ color: '#888', fontSize: '10px' }}>
+                      {capture.prompts.join(', ')}
                     </div>
                   </div>
                 </div>

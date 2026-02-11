@@ -1,4 +1,4 @@
-# SAM3 Map Demo
+# Map Vision Spy
 
 A Next.js web application that uses Meta's SAM3 (Segment Anything Model 3) to detect and highlight objects on interactive maps. Users can search for locations, define text prompts for object detection, and visualize segmented results overlaid on a Mapbox satellite map.
 
